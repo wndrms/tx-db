@@ -1,0 +1,129 @@
+import React, { useEffect, useState } from 'react';
+import { useParams } from 'react-router-dom';
+import ReactEcharts from 'echarts-for-react';
+import { dbService } from "fbase";
+import { collection, doc, query, getDocs, updateDoc } from "@firebase/firestore";
+
+const style = {
+	height: "90vh",
+	width: "100%"
+};
+
+const Graph = ({AccountArray}) => {
+	const [transactions, settransactions] = useState([]);
+	const [nodes, setnodes] = useState([]);
+	const [links, setlinks] = useState([]);
+	const [option, setoption] = useState();
+	let { id } = useParams();
+	console.log(AccountArray);
+	useEffect(() => {
+		const qset = async () => {
+			const q = query(collection(dbService, "transaction"), where("case", "==", id));
+			const querySnapshot = await getDocs(q);
+			var tx_Array = [];
+			let nodes = [];
+			let links = [];
+			var from_id = 0;
+			var to_id = 0;
+			const root = '0x098B716B8Aaf21512996dC57EB0615e2383E2f96'.toLowerCase();
+			var data = {
+				'name':root,
+				'children':[],
+				'category':1
+			}
+			console.log(data);
+			function SNTree(root, matchName){
+				var stack = []
+				stack.push(root);
+				while(stack.length > 0) {
+					var node = stack.pop();
+					if (node.name == matchName) {
+						return node;
+					} else if (node.children && node.children.length) {
+						for (var i = 0; i < node.children.length; i += 1){
+							stack.push(node.children[i]);
+						}
+					}
+				}
+				return null
+			}
+			querySnapshot.forEach((doc) => {
+				tx_Array = [...tx_Array, {
+					hash: doc.id,
+					...doc.data()
+				}];
+			});
+			var stack = [root];
+			while (stack.length > 0){
+				var node = stack.pop();
+				tx_Array.forEach((tx) => {
+					if(tx.from == node){
+						if(!SNTree(data, tx.from).children.find((doc) => doc.name == tx.to)){
+							SNTree(data, tx.from).children.push({
+								name: tx.to,
+								children: []
+							});
+							stack.push(tx.to)
+						}
+					}
+				});
+			}
+			settransactions(tx_Array);
+			const categories = [{'name': 'unknown'}, {'name': 'Exploiter'}, {'name': 'Second Exploiter'}, {'name': 'Third Exploiter'}, {'name': 'Contract'}, {'name': 'Exchange'}];
+			let tx_option  = {
+				title: {
+					text : 'Money Laundering Map',
+					subtext: 'Default layout',
+					top: 'bottom',
+					left: 'right'
+				},
+				tooltip: {
+					trigger: 'item',
+					triggerOn: 'mousemove'
+				},
+				legend: {
+				},
+				series: [
+					{
+						name: 'Money Laundering',
+						type: 'sankey,
+						layout: 'force',
+						data: [data],
+						symbolSize: 7,
+						label: {
+							position: 'left',
+							verticalAlign: 'middle',
+							align: 'right',
+							fontSize: 9
+						},
+						leaves: {
+							label: {
+								position: 'right',
+								verticalAlign: 'middle',
+								align: 'left'
+							}
+						},
+						categories: categories,
+						emphasis: {
+							focus: 'descedant'
+						},
+						expandAndCollapse: true,
+						animationDuration: 550,
+						animationDurationUpdate: 750
+					}
+				]
+			};
+			setoption(tx_option)
+		}
+		qset();
+	}, []);
+	return(
+		<div>
+			{option && (
+				<ReactEcharts option={option} style={style} className="pie-chart" />
+			)}
+		</div>
+	)
+}
+
+export default Graph;
